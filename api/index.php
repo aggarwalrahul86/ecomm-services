@@ -2,146 +2,51 @@
 
 require 'phpMailer/PHPMailerAutoload.php';
 require 'Slim/Slim.php';
-require 'mongo/crud.php';
-require 'mongo/list.php';
-require 'mongo/command.php';
+//require 'db/crud.php';
+//require 'db/list.php';
+require 'db/connection.php';
 
 //include 'dbService.php';
 \Slim\Slim::registerAutoloader();
 
-define('MONGO_HOST', 'localhost');
+define('MYSQL_HOST', 'localhost');
 
 $app = new \Slim\Slim();
 
 /**
  * Routing
  */
+
+$app->post('/authenticate','_doLogin');
 $app->post('/sendemail', '_sendEmail');
-$app->get(    '/:db/:collection',      '_list');
-$app->post(   '/:db/:collection',      '_create');
-$app->post(   '/authenticate/:db',      '_authenticate');
-$app->get(    '/:db/:collection/:id',  '_read');
-$app->put(    '/:db/:collection/:id',  '_update');
-$app->delete( '/:db/:collection/:id',  '_delete');
 
 
-// @todo: add count collection command mongo/commands.php
-
-// List
-
-function _list($db, $collection){
 
 
-  $select = array(
-    'limit' =>    (isset($_GET['limit']))   ? $_GET['limit'] : false,
-    'page' =>     (isset($_GET['page']))    ? $_GET['page'] : false,
-    'filter' =>   (isset($_GET['filter']))  ? $_GET['filter'] : false,
-    'regex' =>    (isset($_GET['regex']))   ? $_GET['regex'] : false,
-    'sort' =>     (isset($_GET['sort']))    ? $_GET['sort'] : false
-  );
-
-  $data = mongoList(
-    MONGO_HOST,
-    $db,
-    $collection,
-    $select
-  );
-  header("Content-Type: application/json");
-  echo json_encode($data);
-  exit;
-}
-
-//Create
-
-function _create($db, $collection){
-
-  $document = json_decode(Slim\Slim::getInstance()->request()->getBody(), true);
-
-  $data = mongoCreate(
-    MONGO_HOST,
-    $db,
-    $collection,
-    $document
-  );
-  header("Content-Type: application/json");
-  echo json_encode($data);
-  exit;
-}
-
-// Authenticate
-
-function _authenticate($db){
-
+function _doLogin() {
   $data = json_decode(Slim\Slim::getInstance()->request()->getBody(), true);
 
      $username =  (isset($data['username']))   ? $data['username'] : null;
-     $password =  (isset($data['pwd']))   ? $data['pwd'] : null;
+     $password =  (isset($data['password']))   ? $data['password'] : null;
 
+	try {
+		$db = getDB();
+		$stmt = $db->prepare("SELECT * FROM admin WHERE username=:username1 AND password=:password1");
+		$stmt->bindValue(':username1', $username, PDO::PARAM_INT);
+		$stmt->bindValue(':password1', $password, PDO::PARAM_STR);
+		$stmt->execute();
+		$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+		$db = null;
 
-   if(!empty($username) and !empty($password))
-   {
+		if(count($rows)) {
+			echo '{"status": "Success"}';
+		}
+		else
+			echo '{"status": "Incorrect"}';
+	} catch(PDOException $e) {
+		echo '{"error":{"msg":'. $e->getMessage() .'}}';
+	}
 
-      if(mongoCollectionCount(MONGO_HOST, $db, 'users',  $data ) >=1){
-
-        $array = array("status" => "Login Successful");
-      }else{
-       $array = array("status" => "Credentials are Incorrect");
-      }
-}else{
-  $array = array("status" => "Data not recieved.");
- }
-
-  header("Content-Type: application/json");
-   echo json_encode($array);
-  exit;
-}
-
-// Read
-
-function _read($db, $collection, $id){
-
-  $data = mongoRead(
-    MONGO_HOST,
-    $db,
-    $collection,
-    $id
-  );
-  header("Content-Type: application/json");
-  echo json_encode($data);
-  exit;
-}
-
-// Update
-
-function _update($db, $collection, $id){
-
-  $document = json_decode(Slim::getInstance()->request()->getBody(), true);
-
-  $data = mongoUpdate(
-    MONGO_HOST,
-    $db,
-    $collection,
-    $id,
-    $document
-  );
-  header("Content-Type: application/json");
-  echo json_encode($data);
-  exit;
-}
-
-// Delete
-
-function _delete($db, $collection, $id){
-
-  $data = mongoDelete(
-    MONGO_HOST,
-    $db,
-    $collection,
-    $id
-  );
-  header("Content-Type: application/json");
-  echo json_encode($data);
-  exit;
 }
 
 
@@ -154,6 +59,8 @@ $body =  (isset($data['body']))   ? $data['body'] : '';
 $from =  (isset($data['from']))   ? $data['from'] : '';
 $to =  (isset($data['to']))   ? $data['to'] : '';
 $toName =  (isset($data['toName']))   ? $data['toName'] : '';
+
+
 
 //Create a new PHPMailer instance
 $mail = new PHPMailer();
@@ -209,7 +116,7 @@ $mail->Subject = 'Query For Products';
 //$mail->msgHTML(file_get_contents('contents.html'), dirname(__FILE__));
 
 $mail->Body = $body; //HTML Body
-
+$mail->IsHTML(true);
 //Replace the plain text body with one created manually
 $mail->AltBody = 'This is a plain-text message body';
 
@@ -217,7 +124,7 @@ $mail->AltBody = 'This is a plain-text message body';
 if (!$mail->send()) {
     echo "Mailer Error: " . $mail->ErrorInfo;
 } else {
-    echo "<p>Message successfully sent!</p>";
+    echo "Message sent";
 }
 
 }
